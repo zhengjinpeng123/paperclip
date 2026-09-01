@@ -1358,6 +1358,7 @@ export async function startServer(): Promise<StartedServer> {
                 requestedByActorType: "system",
                 taskKey: `status-card:${cardId}`,
                 rethrowOnError: true,
+                explicitExecutionTrigger: true,
               });
             } catch (err) {
               await issues.update(generatingIssue.id, { status: "cancelled" });

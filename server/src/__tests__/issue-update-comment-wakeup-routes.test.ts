@@ -239,10 +239,13 @@ describe("issue update comment wakeups", () => {
   });
 
   it("includes the new comment in assignment wakes from issue updates", async () => {
-    const existing = makeIssue();
+    const existing = makeIssue({
+      executionPolicy: { autoWakeOnAssignment: true, stages: [] },
+    });
     const updated = makeIssue({
       assigneeAgentId: ASSIGNEE_AGENT_ID,
       assigneeUserId: null,
+      executionPolicy: { autoWakeOnAssignment: true, stages: [] },
     });
     mockIssueService.getById.mockResolvedValue(existing);
     mockIssueService.update.mockResolvedValue(updated);
@@ -284,18 +287,41 @@ describe("issue update comment wakeups", () => {
     );
   });
 
+  it("does not wake a newly assigned agent under the default execution gate", async () => {
+    const existing = makeIssue();
+    const updated = makeIssue({
+      assigneeAgentId: ASSIGNEE_AGENT_ID,
+      assigneeUserId: null,
+    });
+    mockIssueService.getById.mockResolvedValue(existing);
+    mockIssueService.update.mockResolvedValue(updated);
+
+    const res = await request(await createApp())
+      .patch(`/api/issues/${existing.id}`)
+      .send({
+        assigneeAgentId: ASSIGNEE_AGENT_ID,
+        assigneeUserId: null,
+      });
+
+    expect(res.status).toBe(200);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
+  });
+
   it("interrupts the active run and wakes the newly assigned agent with handoff context", async () => {
     const existing = makeIssue({
       assigneeAgentId: PREVIOUS_AGENT_ID,
       assigneeUserId: null,
       executionRunId: "run-1",
       status: "in_progress",
+      executionPolicy: { autoWakeOnAssignment: true, stages: [] },
     });
     const updated = makeIssue({
       assigneeAgentId: ASSIGNEE_AGENT_ID,
       assigneeUserId: null,
       executionRunId: "run-1",
       status: "in_progress",
+      executionPolicy: { autoWakeOnAssignment: true, stages: [] },
     });
     mockIssueService.getById.mockResolvedValue(existing);
     mockIssueService.update.mockResolvedValue(updated);

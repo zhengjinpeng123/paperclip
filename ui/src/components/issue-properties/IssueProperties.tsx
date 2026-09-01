@@ -835,6 +835,29 @@ export function IssueProperties({
       }),
     });
   };
+  const updateAutoWakeOnAssignment = (autoWakeOnAssignment: boolean) => {
+    const basePolicy = buildExecutionPolicy({
+      existingPolicy: issue.executionPolicy ?? null,
+      reviewerValues,
+      approverValues,
+    });
+    if (!autoWakeOnAssignment && !basePolicy) {
+      onUpdate({ executionPolicy: null });
+      return;
+    }
+    onUpdate({
+      executionPolicy: {
+        mode: basePolicy?.mode ?? issue.executionPolicy?.mode ?? "normal",
+        commentRequired: true,
+        ...(autoWakeOnAssignment ? { autoWakeOnAssignment: true } : {}),
+        stages: basePolicy?.stages ?? [],
+        ...(basePolicy?.monitor ? { monitor: basePolicy.monitor } : {}),
+        ...(basePolicy?.reviewPreset ? { reviewPreset: basePolicy.reviewPreset } : {}),
+        ...(basePolicy?.authorizationPolicy ? { authorizationPolicy: basePolicy.authorizationPolicy } : {}),
+        ...(basePolicy?.maxReviewRounds != null ? { maxReviewRounds: basePolicy.maxReviewRounds } : {}),
+      },
+    });
+  };
   const toggleExecutionParticipant = (stageType: "review" | "approval", value: string) => {
     const currentValues = stageType === "review" ? reviewerValues : approverValues;
     const nextValues = currentValues.includes(value)
@@ -1090,8 +1113,14 @@ export function IssueProperties({
       executionPolicy: {
         mode: basePolicy?.mode ?? issue.executionPolicy?.mode ?? "normal",
         commentRequired: true,
+        ...((basePolicy?.autoWakeOnAssignment ?? issue.executionPolicy?.autoWakeOnAssignment) === true
+          ? { autoWakeOnAssignment: true }
+          : {}),
         stages: basePolicy?.stages ?? [],
         ...(nextMonitor ? { monitor: nextMonitor } : {}),
+        ...(basePolicy?.reviewPreset ? { reviewPreset: basePolicy.reviewPreset } : {}),
+        ...(basePolicy?.authorizationPolicy ? { authorizationPolicy: basePolicy.authorizationPolicy } : {}),
+        ...(basePolicy?.maxReviewRounds != null ? { maxReviewRounds: basePolicy.maxReviewRounds } : {}),
       },
     });
   };
@@ -2320,7 +2349,19 @@ export function IssueProperties({
       </PropertySection>
 
       <PropertySection title="Execution">
-        {/* Read-only: agents set the policy, the board does not. */}
+        <PropertyRow label="Assignment">
+          <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              {issue.executionPolicy?.autoWakeOnAssignment ? "Run automatically" : "Wait for Execute"}
+            </span>
+            <ToggleSwitch
+              checked={issue.executionPolicy?.autoWakeOnAssignment === true}
+              onCheckedChange={updateAutoWakeOnAssignment}
+              aria-label="Run automatically when assigned"
+            />
+          </div>
+        </PropertyRow>
+        {/* Review stages remain agent-authored; assignment execution is a board control. */}
         {reviewPolicyBadge ? (
           <PropertyRow label="Approvals">
             <PropertyChip title={reviewPolicyBadge.description}>

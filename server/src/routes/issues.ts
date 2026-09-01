@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { and, asc, desc, eq, inArray, isNull, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   activityLog,
@@ -169,7 +169,10 @@ import {
   normalizeUploadAttachmentContentType,
   SVG_CONTENT_TYPE,
 } from "../attachment-types.js";
-import { queueIssueAssignmentWakeup } from "../services/issue-assignment-wakeup.js";
+import {
+  queueIssueAssignmentWakeup,
+  shouldAutoWakeOnIssueAssignment,
+} from "../services/issue-assignment-wakeup.js";
 import {
   buildOnboardingGreeting,
   ONBOARDING_GREETING_AUTHORIZATION_REASON,
@@ -457,13 +460,16 @@ const attachmentArtifactMetadataInputSchema = z.object({
 }).passthrough();
 
 function buildCreateIssueActivityStatusDetails(
-  issue: { assigneeAgentId: string | null; status: string },
+  issue: { assigneeAgentId: string | null; status: string; executionPolicy?: unknown },
   res: Response,
 ) {
   const statusDefault = res.locals.createIssueStatusDefault as
     | ReturnType<typeof resolveCreateIssueStatusDefault>
     | undefined;
-  const assignmentWakeSkipped = !issue.assigneeAgentId || issue.status === "backlog";
+  const assignmentWakeSkipped =
+    !issue.assigneeAgentId ||
+    issue.status === "backlog" ||
+    !shouldAutoWakeOnIssueAssignment(issue);
   return {
     status: issue.status,
     statusDefaulted: statusDefault?.defaulted ?? false,
@@ -471,7 +477,9 @@ function buildCreateIssueActivityStatusDetails(
     assignmentWakeSkipped,
     assignmentWakeSkipReason: assignmentWakeSkipped
       ? issue.assigneeAgentId
-        ? "assigned_backlog"
+        ? issue.status === "backlog"
+          ? "assigned_backlog"
+          : "assignment_execution_gate"
         : "no_agent_assignee"
       : null,
   };
@@ -8789,6 +8797,111 @@ export function issueRoutes(
     res.json({ ok: true });
   });
 
+  router.post("/issues/:id/execute", async (req, res) => {
+    assertBoard(req);
+    const id = req.params.id as string;
+    const issue = await getAccessibleResource(req, res, svc.getById(id), "Issue not found");
+    if (!issue) return;
+
+    if (!issue.assigneeAgentId) {
+      res.status(409).json({
+        error: "Assign this task to an agent before executing it",
+        code: "issue_execution_assignee_required",
+      });
+      return;
+    }
+    if (issue.status === "done" || issue.status === "cancelled") {
+      res.status(409).json({
+        error: "Completed or cancelled tasks cannot be executed",
+        code: "issue_execution_terminal",
+      });
+      return;
+    }
+    if (issue.status === "in_review") {
+      res.status(409).json({
+        error: "This task is awaiting review and cannot start a new execution",
+        code: "issue_execution_in_review",
+      });
+      return;
+    }
+    if (issue.status === "blocked") {
+      const readiness = await svc.getDependencyReadiness(issue.id);
+      if (readiness.unresolvedBlockerCount > 0) {
+        res.status(409).json({
+          error: "Resolve this task's blockers before executing it",
+          code: "issue_execution_blocked",
+          blockerIssueIds: readiness.blockerIssueIds,
+        });
+        return;
+      }
+    }
+
+    const existingLiveRun = await db
+      .select({ id: heartbeatRuns.id })
+      .from(heartbeatRuns)
+      .where(and(
+        eq(heartbeatRuns.companyId, issue.companyId),
+        inArray(heartbeatRuns.status, ["queued", "running"]),
+        sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issue.id}`,
+      ))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (existingLiveRun) {
+      res.status(409).json({
+        error: "This task already has queued or running work",
+        code: "issue_execution_already_live",
+        runId: existingLiveRun.id,
+      });
+      return;
+    }
+
+    const actor = getActorInfo(req);
+    const run = await heartbeat.wakeup(issue.assigneeAgentId, {
+      source: "on_demand",
+      triggerDetail: "manual",
+      reason: "issue_execution_requested",
+      payload: {
+        issueId: issue.id,
+        mutation: "execute",
+      },
+      requestedByActorType: actor.actorType,
+      requestedByActorId: actor.actorId,
+      contextSnapshot: {
+        issueId: issue.id,
+        taskId: issue.id,
+        source: "issue.execute",
+        wakeReason: "issue_execution_requested",
+      },
+    });
+
+    if (!run) {
+      res.status(409).json({
+        error: "Execution was not started because the agent wakeup was skipped",
+        code: "issue_execution_wakeup_skipped",
+      });
+      return;
+    }
+
+    await logActivity(db, {
+      companyId: issue.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: issue.assigneeAgentId,
+      runId: run.id,
+      agentApiKeyId: actor.agentApiKeyId,
+      action: "issue.execution_requested",
+      entityType: "issue",
+      entityId: issue.id,
+      details: {
+        identifier: issue.identifier,
+        assigneeAgentId: issue.assigneeAgentId,
+        source: "issue.execute",
+      },
+    });
+
+    res.status(202).json(run);
+  });
+
   router.post("/issues/:id/scheduled-retry/retry-now", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
@@ -10173,7 +10286,12 @@ export function issueRoutes(
 
       if (executionStageWakeup) {
         addWakeup(executionStageWakeup.agentId, executionStageWakeup.wakeup);
-      } else if (assigneeChanged && issue.assigneeAgentId && issue.status !== "backlog") {
+      } else if (
+        assigneeChanged &&
+        issue.assigneeAgentId &&
+        issue.status !== "backlog" &&
+        shouldAutoWakeOnIssueAssignment(issue)
+      ) {
         addWakeup(issue.assigneeAgentId, {
           source: "assignment",
           triggerDetail: "system",
@@ -10206,7 +10324,7 @@ export function issueRoutes(
       if (
         !assigneeChanged &&
         (
-          statusChangedFromBacklog ||
+          (statusChangedFromBacklog && shouldAutoWakeOnIssueAssignment(issue)) ||
           statusChangedFromBlockedToTodo ||
           statusChangedFromClosedToTodo ||
           userResumedFromReviewToTodo

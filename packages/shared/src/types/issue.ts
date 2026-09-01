@@ -683,6 +683,8 @@ export interface IssueExecutionMonitorPolicy {
 export interface IssueExecutionPolicy {
   mode: IssueExecutionPolicyMode;
   commentRequired: boolean;
+  /** When true, assigning this issue may immediately wake the assignee. Defaults to false. */
+  autoWakeOnAssignment?: boolean;
   stages: IssueExecutionStage[];
   monitor?: IssueExecutionMonitorPolicy | null;
   reviewPreset?: LowTrustReviewPresetPolicy;

@@ -36,4 +36,20 @@ describe("buildExecutionPolicy", () => {
       expect(stage.participants[0]?.id).toMatch(UUID_PATTERN);
     }
   });
+
+  it("preserves the assignment execution gate without review stages", () => {
+    const policy = buildExecutionPolicy({
+      existingPolicy: {
+        mode: "normal",
+        commentRequired: true,
+        autoWakeOnAssignment: true,
+        stages: [],
+      },
+      reviewerValues: [],
+      approverValues: [],
+    });
+
+    expect(policy).toMatchObject({ autoWakeOnAssignment: true, stages: [] });
+    expect(issueExecutionPolicySchema.safeParse(policy).success).toBe(true);
+  });
 });

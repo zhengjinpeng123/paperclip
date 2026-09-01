@@ -95,6 +95,13 @@ describe("normalizeIssueExecutionPolicy", () => {
     expect(result!.mode).toBe("normal");
   });
 
+  it("keeps an automatic assignment policy without review stages", () => {
+    expect(normalizeIssueExecutionPolicy({ autoWakeOnAssignment: true, stages: [] })).toMatchObject({
+      autoWakeOnAssignment: true,
+      stages: [],
+    });
+  });
+
   it("rejects approvalsNeeded values above 1", () => {
     expect(() =>
       normalizeIssueExecutionPolicy({

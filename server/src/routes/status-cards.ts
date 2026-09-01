@@ -99,6 +99,7 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
           requestedByActorId: actor.actorId,
           taskKey: `status-card:${cardId}`,
           rethrowOnError: true,
+          explicitExecutionTrigger: true,
         });
       } catch (error) {
         await issueSvc.update(result.generatingIssue.id, { status: "cancelled" });
@@ -130,6 +131,7 @@ export function statusCardRoutes(db: Db, opts: { heartbeat?: IssueAssignmentWake
           requestedByActorId: actor.actorId,
           taskKey: `status-card:${cardId}`,
           rethrowOnError: true,
+          explicitExecutionTrigger: true,
         });
       } catch (error) {
         await issueSvc.update(result.generatingIssue.id, { status: "cancelled" });

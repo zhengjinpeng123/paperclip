@@ -6,6 +6,7 @@ const assigneeAgentId = "22222222-2222-4222-8222-222222222222";
 
 const mockWakeup = vi.hoisted(() => vi.fn(async () => undefined));
 const mockLogActivity = vi.hoisted(() => vi.fn(async () => undefined));
+const mockDbSelectRows = vi.hoisted(() => vi.fn(async () => []));
 const mockIssueService = vi.hoisted(() => ({
   create: vi.fn(),
   createChild: vi.fn(),
@@ -16,6 +17,7 @@ const mockIssueService = vi.hoisted(() => ({
   getRelationSummaries: vi.fn(),
   listWakeableBlockedDependents: vi.fn(),
   getWakeableParentAfterChildCompletion: vi.fn(),
+  getDependencyReadiness: vi.fn(),
   findMentionedAgents: vi.fn(async () => []),
 }));
 
@@ -131,7 +133,16 @@ async function createApp() {
     };
     next();
   });
-  app.use("/api", issueRoutes({} as any, {} as any));
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => mockDbSelectRows(),
+        }),
+      }),
+    }),
+  };
+  app.use("/api", issueRoutes(db as any, {} as any));
   app.use(errorHandler);
   return app;
 }
@@ -142,6 +153,7 @@ function makeIssue(input: {
   status?: string;
   parentId?: string | null;
   assigneeAgentId?: string | null;
+  executionPolicy?: Record<string, unknown> | null;
 }) {
   return {
     id: input.id,
@@ -157,6 +169,7 @@ function makeIssue(input: {
     createdByAgentId: null,
     createdByUserId: "local-board",
     executionWorkspaceId: null,
+    executionPolicy: input.executionPolicy ?? null,
     labels: [],
     labelIds: [],
   };
@@ -191,6 +204,7 @@ describe("assigned backlog creation contract", () => {
         title: String(data.title),
         status: String(data.status),
         assigneeAgentId: data.assigneeAgentId as string | null | undefined,
+        executionPolicy: data.executionPolicy as Record<string, unknown> | null | undefined,
       }));
     mockIssueService.createChild.mockImplementation(async (_parentId: string, data: Record<string, unknown>) => ({
       issue: makeIssue({
@@ -199,12 +213,18 @@ describe("assigned backlog creation contract", () => {
         status: String(data.status),
         parentId: "parent-1",
         assigneeAgentId: data.assigneeAgentId as string | null | undefined,
+        executionPolicy: data.executionPolicy as Record<string, unknown> | null | undefined,
       }),
       parentBlockerAdded: Boolean(data.blockParentUntilDone),
     }));
     mockIssueService.getRelationSummaries.mockResolvedValue({ blockedBy: [], blocks: [] });
     mockIssueService.listWakeableBlockedDependents.mockResolvedValue([]);
     mockIssueService.getWakeableParentAfterChildCompletion.mockResolvedValue(null);
+    mockIssueService.getDependencyReadiness.mockResolvedValue({
+      unresolvedBlockerCount: 0,
+      blockerIssueIds: [],
+    });
+    mockDbSelectRows.mockResolvedValue([]);
   });
 
   it("does not silently create a top-level assigned issue as backlog when status is omitted", async () => {
@@ -234,14 +254,7 @@ describe("assigned backlog creation contract", () => {
       assigneeAgentId,
       status: "todo",
     }));
-    expect(mockWakeup).toHaveBeenCalledWith(
-      assigneeAgentId,
-      expect.objectContaining({
-        source: "assignment",
-        reason: "issue_assigned",
-        payload: expect.objectContaining({ mutation: "create" }),
-      }),
-    );
+    expect(mockWakeup).not.toHaveBeenCalled();
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -250,13 +263,14 @@ describe("assigned backlog creation contract", () => {
           status: "todo",
           statusDefaulted: true,
           statusDefaultReason: "assigned_omitted_status",
-          assignmentWakeSkipped: false,
+          assignmentWakeSkipped: true,
+          assignmentWakeSkipReason: "assignment_execution_gate",
         }),
       }),
     );
   });
 
-  it("does not let a parent-blocking assigned child become an unwoken backlog leaf by default", async () => {
+  it("creates a parent-blocking assigned child ready but waiting for explicit execution", async () => {
     const res = await request(await createApp())
       .post("/api/issues/parent-1/children")
       .send({
@@ -294,17 +308,41 @@ describe("assigned backlog creation contract", () => {
           status: "todo",
           statusDefaulted: true,
           statusDefaultReason: "assigned_omitted_status",
-          assignmentWakeSkipped: false,
+          assignmentWakeSkipped: true,
+          assignmentWakeSkipReason: "assignment_execution_gate",
           parentBlockerAdded: true,
         }),
       }),
     );
+    expect(mockWakeup).not.toHaveBeenCalled();
+  });
+
+  it("preserves automatic assignment execution when explicitly enabled", async () => {
+    const res = await request(await createApp())
+      .post("/api/companies/company-1/issues")
+      .send({
+        title: "Explicitly automatic work",
+        assigneeAgentId,
+        executionPolicy: { autoWakeOnAssignment: true, stages: [] },
+      });
+
+    expect(res.status).toBe(201);
     expect(mockWakeup).toHaveBeenCalledWith(
       assigneeAgentId,
       expect.objectContaining({
         source: "assignment",
         reason: "issue_assigned",
         payload: expect.objectContaining({ mutation: "create" }),
+      }),
+    );
+    expect(mockLogActivity).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: "issue.created",
+        details: expect.objectContaining({
+          assignmentWakeSkipped: false,
+          assignmentWakeSkipReason: null,
+        }),
       }),
     );
   });
@@ -345,6 +383,84 @@ describe("assigned backlog creation contract", () => {
         }),
       }),
     );
+    expect(mockWakeup).not.toHaveBeenCalled();
+  });
+
+  it("starts a task only after the board explicitly executes it", async () => {
+    const issue = makeIssue({
+      id: "execute-1",
+      title: "Ready for explicit execution",
+      assigneeAgentId,
+      status: "todo",
+    });
+    mockIssueService.getById.mockResolvedValue(issue);
+    mockWakeup.mockResolvedValueOnce({ id: "run-explicit-1" });
+
+    const res = await request(await createApp())
+      .post(`/api/issues/${issue.id}/execute`)
+      .send({});
+
+    expect(res.status).toBe(202);
+    expect(mockWakeup).toHaveBeenCalledWith(
+      assigneeAgentId,
+      expect.objectContaining({
+        source: "on_demand",
+        triggerDetail: "manual",
+        reason: "issue_execution_requested",
+        payload: expect.objectContaining({ issueId: issue.id, mutation: "execute" }),
+        contextSnapshot: expect.objectContaining({
+          issueId: issue.id,
+          taskId: issue.id,
+          source: "issue.execute",
+        }),
+      }),
+    );
+    expect(mockLogActivity).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: "issue.execution_requested",
+        entityId: issue.id,
+        runId: "run-explicit-1",
+      }),
+    );
+  });
+
+  it("rejects explicit execution when the task has no agent assignee", async () => {
+    const issue = makeIssue({
+      id: "execute-unassigned",
+      title: "Missing assignee",
+      status: "todo",
+    });
+    mockIssueService.getById.mockResolvedValue(issue);
+
+    const res = await request(await createApp())
+      .post(`/api/issues/${issue.id}/execute`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("issue_execution_assignee_required");
+    expect(mockWakeup).not.toHaveBeenCalled();
+  });
+
+  it("rejects explicit execution when any live run already owns the task", async () => {
+    const issue = makeIssue({
+      id: "execute-live",
+      title: "Already running under a previous assignee",
+      assigneeAgentId,
+      status: "todo",
+    });
+    mockIssueService.getById.mockResolvedValue(issue);
+    mockDbSelectRows.mockResolvedValueOnce([{ id: "run-existing" }]);
+
+    const res = await request(await createApp())
+      .post(`/api/issues/${issue.id}/execute`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual(expect.objectContaining({
+      code: "issue_execution_already_live",
+      runId: "run-existing",
+    }));
     expect(mockWakeup).not.toHaveBeenCalled();
   });
 });

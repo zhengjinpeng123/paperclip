@@ -246,6 +246,7 @@ Routine execution issues add a routine-scoped env overlay after project env and 
 - `billing_code` text null
 - `assignee_adapter_overrides` jsonb null
 - `execution_policy` jsonb null
+  - `autoWakeOnAssignment` boolean optional; missing/false means assignment changes ownership without starting a run, true opts the issue into assignment-triggered execution
 - `execution_state` jsonb null
 - execution workspace fields: `execution_workspace_id`, `execution_workspace_preference`, `execution_workspace_settings`
 - `started_at` timestamptz null
@@ -501,6 +502,8 @@ Side effects:
 - entering `in_progress` sets `started_at` if null
 - entering `done` sets `completed_at`
 - entering `cancelled` sets `cancelled_at`
+- creating or changing an agent assignee does not start execution by default; the board must use the explicit execute action unless `execution_policy.autoWakeOnAssignment = true`
+- explicit automation/generation triggers (for example Routine dispatch and requested status-card generation) bypass the assignment gate without changing the issue's assignment policy
 
 V1 non-terminal liveness rule:
 
@@ -1006,6 +1009,7 @@ instances return `404`.
 - `GET /issues/:issueId/documents/:key/revisions`
 - `DELETE /issues/:issueId/documents/:key`
 - `POST /issues/:issueId/checkout`
+- `POST /issues/:issueId/execute` (board-only explicit execution gate)
 - `POST /issues/:issueId/release`
 - `POST /issues/:issueId/admin/force-release` (board-only lock recovery)
 - `POST /issues/:issueId/comments`
@@ -1302,6 +1306,7 @@ Required UX behaviors:
 - quick actions: pause/resume agent, create task, approve/reject request
 - conflict toasts on atomic checkout failure
 - no silent background failures; every failed run visible in UI
+- assigned non-terminal tasks without a live run show that they are waiting for explicit execution, with a board-visible Execute action
 
 ## 15. Operational Requirements
 

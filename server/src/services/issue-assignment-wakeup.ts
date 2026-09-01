@@ -18,9 +18,16 @@ export interface IssueAssignmentWakeupDeps {
   ) => Promise<unknown>;
 }
 
+export function shouldAutoWakeOnIssueAssignment(issue: { executionPolicy?: unknown }): boolean {
+  if (!issue.executionPolicy || typeof issue.executionPolicy !== "object" || Array.isArray(issue.executionPolicy)) {
+    return false;
+  }
+  return (issue.executionPolicy as Record<string, unknown>).autoWakeOnAssignment === true;
+}
+
 export function queueIssueAssignmentWakeup(input: {
   heartbeat: IssueAssignmentWakeupDeps;
-  issue: { id: string; assigneeAgentId: string | null; status: string };
+  issue: { id: string; assigneeAgentId: string | null; status: string; executionPolicy?: unknown };
   reason: string;
   mutation: string;
   contextSource: string;
@@ -28,8 +35,13 @@ export function queueIssueAssignmentWakeup(input: {
   requestedByActorId?: string | null;
   taskKey?: string | null;
   rethrowOnError?: boolean;
+  explicitExecutionTrigger?: boolean;
 }) {
-  if (!input.issue.assigneeAgentId || input.issue.status === "backlog") return;
+  if (
+    !input.issue.assigneeAgentId ||
+    input.issue.status === "backlog" ||
+    (!input.explicitExecutionTrigger && !shouldAutoWakeOnIssueAssignment(input.issue))
+  ) return;
 
   return input.heartbeat
     .wakeup(input.issue.assigneeAgentId, {

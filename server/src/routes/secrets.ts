@@ -231,6 +231,7 @@ export function secretRoutes(db: Db, deps: SecretRoutesDeps = {}) {
         contextSource: "secret.proposal.resolution",
         requestedByActorType: "user",
         requestedByActorId: input.userId,
+        explicitExecutionTrigger: true,
       });
     } catch (err) {
       logger.warn(

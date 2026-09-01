@@ -1917,6 +1917,7 @@ export function routineService(
           contextSource: "routine.dispatch",
           requestedByActorType: input.source === "schedule" ? "system" : undefined,
           rethrowOnError: true,
+          explicitExecutionTrigger: true,
         });
         const updated = await finalizeRun(createdRun.id, {
           status: "issue_created",

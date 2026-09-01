@@ -84,6 +84,10 @@ export function buildExecutionPolicy(input: {
   const mode = input.existingPolicy?.mode ?? "normal";
   const stages: IssueExecutionPolicy["stages"] = [];
   const monitor = input.existingPolicy?.monitor ?? null;
+  const autoWakeOnAssignment = input.existingPolicy?.autoWakeOnAssignment ?? false;
+  const reviewPreset = input.existingPolicy?.reviewPreset;
+  const authorizationPolicy = input.existingPolicy?.authorizationPolicy;
+  const maxReviewRounds = input.existingPolicy?.maxReviewRounds ?? null;
 
   const existingReviewStage = input.existingPolicy?.stages.find((stage) => stage.type === "review");
   const reviewParticipants = mergeParticipants(existingReviewStage?.participants, input.reviewerValues);
@@ -107,12 +111,23 @@ export function buildExecutionPolicy(input: {
     });
   }
 
-  if (stages.length === 0 && !monitor) return null;
+  if (
+    stages.length === 0 &&
+    !monitor &&
+    !autoWakeOnAssignment &&
+    !reviewPreset &&
+    !authorizationPolicy &&
+    maxReviewRounds == null
+  ) return null;
 
   return {
     mode,
     commentRequired: true,
+    ...(autoWakeOnAssignment ? { autoWakeOnAssignment: true } : {}),
     stages,
     ...(monitor ? { monitor } : {}),
+    ...(reviewPreset ? { reviewPreset } : {}),
+    ...(authorizationPolicy ? { authorizationPolicy } : {}),
+    ...(maxReviewRounds != null ? { maxReviewRounds } : {}),
   };
 }

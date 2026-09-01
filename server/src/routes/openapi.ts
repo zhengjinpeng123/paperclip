@@ -2453,6 +2453,21 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
+  path: "/api/issues/{id}/execute",
+  tags: ["issues"],
+  summary: "Explicitly execute an assigned issue",
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    202: { description: "Issue execution accepted" },
+    401: r.unauthorized,
+    403: r.forbidden,
+    404: r.notFound,
+    409: r.conflict,
+  },
+});
+
+registry.registerPath({
+  method: "post",
   path: "/api/issues/{id}/release",
   tags: ["issues"],
   summary: "Release an issue",

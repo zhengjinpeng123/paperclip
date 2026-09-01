@@ -2426,6 +2426,26 @@ export function IssueDetail() {
       }
     },
   });
+  const executeIssue = useMutation({
+    mutationFn: () => issuesApi.execute(issue?.id ?? issueId!),
+    onSuccess: (run) => {
+      invalidateIssueDetail();
+      invalidateIssueRunState();
+      invalidateIssueCollections();
+      pushToast({
+        title: "Execution started",
+        body: "id" in run ? `Run ${run.id.slice(0, 8)} is queued.` : "The task was queued for execution.",
+        tone: "success",
+      });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Execution not started",
+        body: err instanceof Error ? err.message : "The task did not pass execution preflight.",
+        tone: "error",
+      });
+    },
+  });
   const resolveRecoveryAction = useMutation({
     mutationFn: (data: {
       actionId?: string;
@@ -4375,6 +4395,14 @@ export function IssueDetail() {
   const canRestoreSubtree = canShowSubtreeControls && activeCancelHolds.length > 0;
   const isTerminalIssue = issue.status === "done" || issue.status === "cancelled";
   const isAgentOwnedNonTerminalIssue = Boolean(issue.assigneeAgentId) && !isTerminalIssue;
+  const canExecuteIssue = Boolean(
+    canManageTreeControl &&
+    issue.assigneeAgentId &&
+    !isTerminalIssue &&
+    issue.status !== "in_review" &&
+    !hasLiveRuns &&
+    !activePauseHold,
+  );
   const canPauseLeafWork = canManageTreeControl && childIssues.length === 0 && !activePauseHold && !isTerminalIssue;
   const canResumeLeafWork = canManageTreeControl && childIssues.length === 0 && activePauseHold?.isRoot === true;
   const treeControlScope: "leaf" | "subtree" = childIssues.length === 0 ? "leaf" : "subtree";
@@ -4520,6 +4548,17 @@ export function IssueDetail() {
             </Badge>
           )}
 
+          {!hasLiveRuns && isAgentOwnedNonTerminalIssue && issue.executionPolicy?.autoWakeOnAssignment !== true ? (
+            <Badge
+              variant="outline"
+              className="gap-1.5 border-amber-500/40 bg-amber-500/10 text-(length:--text-nano) text-amber-700 dark:text-amber-300"
+              title="Assignment is complete. Execution starts only after an explicit Execute action."
+              data-testid="issue-waiting-for-execute-badge"
+            >
+              Waiting for Execute
+            </Badge>
+          ) : null}
+
           {issue.originKind === "routine_execution" && issue.originId && (
             <Link
               to={`/routines/${issue.originId}`}
@@ -4636,6 +4675,19 @@ export function IssueDetail() {
 
           {!(isMobile && isFromInbox) && (
             <div className="ml-auto flex items-center gap-0.5 md:hidden shrink-0">
+              {canExecuteIssue ? (
+                <Button
+                  variant="default"
+                  size="icon-xs"
+                  onClick={() => executeIssue.mutate()}
+                  disabled={executeIssue.isPending}
+                  title="Execute task"
+                  aria-label="Execute task"
+                  data-testid="issue-execute-button-mobile"
+                >
+                  <PlayCircle className={cn("h-4 w-4", executeIssue.isPending && "animate-pulse")} />
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 size="icon-xs"
@@ -4656,6 +4708,19 @@ export function IssueDetail() {
           )}
 
           <div className="hidden md:flex items-center md:ml-auto shrink-0">
+            {canExecuteIssue ? (
+              <Button
+                variant="default"
+                size="sm"
+                className="mr-1 h-7 px-2.5 text-xs"
+                onClick={() => executeIssue.mutate()}
+                disabled={executeIssue.isPending}
+                data-testid="issue-execute-button"
+              >
+                <PlayCircle className={cn("mr-1 h-3.5 w-3.5", executeIssue.isPending && "animate-pulse")} />
+                {executeIssue.isPending ? "Starting..." : "Execute"}
+              </Button>
+            ) : null}
             {canArchiveFromInbox && (
               <Button
                 variant="ghost"

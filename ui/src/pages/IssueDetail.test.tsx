@@ -28,6 +28,7 @@ const mockIssuesApi = vi.hoisted(() => ({
   listFeedbackVotes: vi.fn(),
   markRead: vi.fn(),
   update: vi.fn(),
+  execute: vi.fn(),
   previewTreeControl: vi.fn(),
   getTreeControlState: vi.fn(),
   listTreeHolds: vi.fn(),
@@ -1134,6 +1135,36 @@ describe("IssueDetail", () => {
         String(call[0]).includes("React has detected a change in the order of Hooks"),
       ),
     ).toBe(false);
+  });
+
+  it("shows the manual execution gate and starts an explicitly assigned task", async () => {
+    mockAuthApi.getSession.mockResolvedValue({
+      session: { userId: "board-user" },
+      user: { id: "board-user" },
+    });
+    mockIssuesApi.get.mockResolvedValue(createIssue({ assigneeAgentId: "agent-1" }));
+    mockIssuesApi.execute.mockResolvedValue({ id: "run-12345678" });
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <IssueDetail />
+        </QueryClientProvider>,
+      );
+    });
+
+    await waitForAssertion(() => {
+      expect(container.querySelector('[data-testid="issue-waiting-for-execute-badge"]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="issue-execute-button"]')).not.toBeNull();
+    });
+
+    await act(async () => {
+      (container.querySelector('[data-testid="issue-execute-button"]') as HTMLButtonElement).click();
+    });
+    await waitForAssertion(() => {
+      expect(mockIssuesApi.execute).toHaveBeenCalledWith("issue-1");
+      expect(mockPushToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Execution started" }));
+    });
   });
 
   it("opens a closed desktop pane and routes an ordinary document to Artifacts on direct load", async () => {

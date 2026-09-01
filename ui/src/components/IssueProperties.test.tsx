@@ -2231,6 +2231,36 @@ describe("IssueProperties", () => {
     act(() => root.unmount());
   });
 
+  it("lets the board opt a task into automatic execution on assignment", async () => {
+    const onUpdate = vi.fn();
+    const root = renderProperties(container, {
+      issue: createIssue({ executionPolicy: null }),
+      childIssues: [],
+      onUpdate,
+    });
+    await flush();
+
+    expect(container.textContent).toContain("Wait for Execute");
+    const toggle = container.querySelector('button[aria-label="Run automatically when assigned"]');
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+
+    await act(async () => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      executionPolicy: {
+        mode: "normal",
+        commentRequired: true,
+        autoWakeOnAssignment: true,
+        stages: [],
+      },
+    });
+
+    act(() => root.unmount());
+  });
+
   it("shows a run approval action when approval is the next runnable stage", async () => {
     const root = renderProperties(container, {
       issue: createIssue({

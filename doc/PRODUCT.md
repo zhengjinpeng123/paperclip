@@ -58,6 +58,8 @@ Tasks have parentage. Every task exists in service of a parent task, all the way
 
 The current issue model includes stable issue identifiers, parent/sub-issues, blockers, a single assignee, comments, issue documents, attachments and work products, and review/approval handoffs. That structure keeps work inspectable by both the board and agents while still allowing agents to decompose work into smaller tasks.
 
+Assignment establishes accountability; it does not spend tokens by default. An assigned task waits for the board's explicit Execute action unless that issue opts into automatic assignment execution. Independent execution triggers such as a due Routine or an explicit generation request still run as requested. This keeps autonomous flows available while making the execution boundary visible and auditable.
+
 ### Company Skills and Policy
 
 Company skills are shared operating capabilities, not privileged objects by default. Every authenticated agent in a company can create, import, install, edit, update, test, reset, and remove that company's skills unless the company has configured an explicit restriction.
@@ -156,7 +158,7 @@ Paperclip’s core identity is a **control plane for autonomous AI companies**, 
    The mental model should not change between local solo use and shared/private or public/cloud deployment.
 
 8. **Safe autonomy**
-   Auto mode is allowed; hidden token burn is not.
+   Auto mode is allowed; hidden token burn is not. Assignment and execution are separate by default, with automatic assignment execution as an explicit per-task policy.
 
 9. **Thin core, rich edges**
    Put optional chat, knowledge, and special surfaces into plugins/extensions rather than bloating the control plane.

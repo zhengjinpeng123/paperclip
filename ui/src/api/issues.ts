@@ -1,5 +1,6 @@
 import type {
   AcceptedPlanDecompositionSummary,
+  AgentWakeupResponse,
   AskUserQuestionsAnswer,
   Approval,
   CompactIssue,
@@ -166,6 +167,8 @@ export const issuesApi = {
     api.post<Issue>(`/companies/${companyId}/issues`, data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch<IssueUpdateResponse>(`/issues/${id}`, data),
+  execute: (id: string) =>
+    api.post<AgentWakeupResponse>(`/issues/${id}/execute`, {}),
   decideStalledReview: (id: string, data: StalledReviewDecision) =>
     api.post<StalledReviewDecisionResponse>(`/issues/${id}/stalled-review-decision`, data),
   resolveRecoveryAction: (

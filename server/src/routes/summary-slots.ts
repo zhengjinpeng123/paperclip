@@ -152,6 +152,7 @@ export function summarySlotRoutes(db: Db) {
             scopeId: result.slot.scopeId,
           }),
           rethrowOnError: true,
+          explicitExecutionTrigger: true,
         });
       }
       res.status(result.alreadyGenerating ? 200 : 202).json(result);
