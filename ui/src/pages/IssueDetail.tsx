@@ -5070,8 +5070,19 @@ export function IssueDetail() {
         />
       ) : null}
 
-      {/* Flag ON: attachments/work products/workspace live in the properties
-          pane (Artifacts tab) — the center column belongs to the thread. */}
+      {/* Business result stays above the conversation in the default task
+          shell. The compact variant keeps the thread usable while making the
+          primary deliverable visible without opening the properties pane. */}
+      {taskChatShellEnabled ? (
+        <IssueOutputSection
+          className={shellSectionClass}
+          variant="summary"
+          workProducts={workProducts}
+        />
+      ) : null}
+
+      {/* Documents, attachments and workspace browsing remain available in
+          the properties pane for the task shell. */}
       {taskChatShellEnabled ? null : (
       <IssueDocumentsSection
         issue={issue}
@@ -5104,6 +5115,7 @@ export function IssueDetail() {
 
       {taskChatShellEnabled ? null : (
       <IssueOutputSection
+        className={shellSectionClass}
         workProducts={workProducts}
         onMediaClick={(item) => {
           const meta = item.metadata;

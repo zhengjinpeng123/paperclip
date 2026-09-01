@@ -110,40 +110,8 @@ const DOCUMENT_LIKE_APPLICATION_TYPES = new Set([
   "application/yaml",
 ]);
 
-const DOCUMENT_LIKE_FILENAME_EXTENSIONS = [
-  ".csv",
-  ".css",
-  ".graphql",
-  ".htm",
-  ".html",
-  ".js",
-  ".json",
-  ".jsx",
-  ".log",
-  ".markdown",
-  ".md",
-  ".mdx",
-  ".php",
-  ".py",
-  ".sh",
-  ".sql",
-  ".toml",
-  ".ts",
-  ".tsx",
-  ".txt",
-  ".xml",
-  ".yaml",
-  ".yml",
-];
-
 export function normalizeOutputContentType(contentType: string | null | undefined): string {
   return (contentType ?? "").toLowerCase().split(";")[0]?.trim() ?? "";
-}
-
-function hasDocumentLikeFilename(originalFilename: string | null | undefined): boolean {
-  const filename = (originalFilename ?? "").trim().toLowerCase();
-  if (!filename) return false;
-  return DOCUMENT_LIKE_FILENAME_EXTENSIONS.some((extension) => filename.endsWith(extension));
 }
 
 function isZipContentType(contentType: string): boolean {
@@ -161,13 +129,12 @@ function isDocumentLikeOutputContentType(contentType: string): boolean {
 
 export function isOutputEligibleContentType(
   contentType: string | null | undefined,
-  originalFilename?: string | null | undefined,
+  _originalFilename?: string | null | undefined,
 ): boolean {
   const type = normalizeOutputContentType(contentType);
   if (!type) return false;
-  if (isDocumentLikeOutputContentType(type)) return false;
-  if (GENERIC_BINARY_CONTENT_TYPES.has(type) && hasDocumentLikeFilename(originalFilename)) return false;
   return (
+    isDocumentLikeOutputContentType(type) ||
     type.startsWith("video/") ||
     type.startsWith("image/") ||
     type === "application/pdf" ||
@@ -259,6 +226,8 @@ function toTime(value: string | Date): number {
  * Parse attachment-backed artifact work products into renderable outputs.
  *
  * - Only `type: "artifact"` work products are considered outputs.
+ * - Business-readable files (Markdown, text, JSON, CSV, HTML, XML, YAML and
+ *   source-like documents) are eligible alongside media and binary artifacts.
  * - Metadata is validated against the shared contract; invalid metadata yields
  *   a degraded item rather than an exception.
  * - Ordering: the explicit primary (or the most-recent artifact when none is

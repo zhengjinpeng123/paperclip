@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { FileCheck2, Play } from "lucide-react";
 import type { IssueWorkProduct } from "@paperclipai/shared";
 import {
   formatBytes,
@@ -14,6 +14,9 @@ import { cn, relativeTime } from "@/lib/utils";
 
 interface IssueOutputSectionProps {
   workProducts: IssueWorkProduct[] | null | undefined;
+  /** Compact result-first treatment used above the task conversation. */
+  variant?: "showcase" | "summary";
+  className?: string;
   /** Optional resolver for the artifact creator's display name. */
   resolveCreatorName?: (item: IssueOutputItem) => string | null;
   onMediaClick?: (item: IssueOutputItem) => void;
@@ -110,7 +113,13 @@ function OutputMediaPreview({
  * omitted entirely when the issue has produced no outputs — we never show a
  * permanent empty card.
  */
-export function IssueOutputSection({ workProducts, resolveCreatorName, onMediaClick }: IssueOutputSectionProps) {
+export function IssueOutputSection({
+  workProducts,
+  variant = "showcase",
+  className,
+  resolveCreatorName,
+  onMediaClick,
+}: IssueOutputSectionProps) {
   const { primary, rest, count } = getIssueOutputs(workProducts);
 
   if (!primary) return null;
@@ -119,8 +128,29 @@ export function IssueOutputSection({ workProducts, resolveCreatorName, onMediaCl
   const mediaRest = rest.filter(isMediaOutput);
   const fileRest = rest.filter((item) => !isMediaOutput(item));
 
+  if (variant === "summary") {
+    return (
+      <section
+        className={cn("space-y-3", className)}
+        aria-label="Task result"
+        data-output-variant="summary"
+      >
+        <div className="flex items-center gap-2">
+          <FileCheck2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          <h3 className="text-sm font-medium text-muted-foreground">Result</h3>
+          <span className="text-xs text-muted-foreground">{count}</span>
+        </div>
+        {[primary, ...rest].map((item) => (
+          <div key={item.id} id={`work-product-${item.id}`} className="scroll-mt-20">
+            <OutputRow item={item} creatorName={creatorFor(item)} />
+          </div>
+        ))}
+      </section>
+    );
+  }
+
   return (
-    <section className="space-y-3" aria-label="Task outputs">
+    <section className={cn("space-y-3", className)} aria-label="Task outputs" data-output-variant="showcase">
       <div className="flex items-center gap-2">
         <Play className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
         <h3 className="text-sm font-medium text-muted-foreground">Output</h3>

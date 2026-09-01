@@ -110,7 +110,7 @@ describe("IssueOutputSection", () => {
     expect(markup).toBe("");
   });
 
-  it("renders nothing for markdown-only artifact work products", () => {
+  it("renders a markdown artifact as a business-readable output", () => {
     const markup = renderToStaticMarkup(
       <IssueOutputSection
         workProducts={[
@@ -124,7 +124,38 @@ describe("IssueOutputSection", () => {
       />,
     );
 
-    expect(markup).toBe("");
+    expect(markup).toContain("plan.md");
+    expect(markup).toContain("text/markdown");
+    expect(markup).toContain("Open");
+    expect(markup).toContain("Download");
+  });
+
+  it("renders a compact result-first summary for the task chat shell", () => {
+    const markup = renderToStaticMarkup(
+      <IssueOutputSection
+        variant="summary"
+        workProducts={[
+          makeWorkProduct({
+            id: "wp-result",
+            title: "CEO brief",
+            isPrimary: true,
+            metadata: metadata("att-1", "text/markdown", "ceo-brief.md"),
+          }),
+          makeWorkProduct({
+            id: "wp-data",
+            title: "Supporting data",
+            metadata: metadata("att-pdf", "application/json", "evidence.json"),
+          }),
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-output-variant="summary"');
+    expect(markup).toContain("Task result");
+    expect(markup).toContain("Result");
+    expect(markup).toContain("ceo-brief.md");
+    expect(markup).toContain("evidence.json");
+    expect(markup).not.toContain("<video");
   });
 
   it("renders the primary card plus an Also produced list for multiple outputs", () => {

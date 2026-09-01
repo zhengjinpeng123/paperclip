@@ -125,17 +125,17 @@ describe("isOutputEligibleContentType", () => {
     expect(isOutputEligibleContentType("application/octet-stream", "build.bin")).toBe(true);
   });
 
-  it("filters document-like and source formats out of outputs", () => {
-    expect(isOutputEligibleContentType("text/markdown")).toBe(false);
-    expect(isOutputEligibleContentType("text/plain")).toBe(false);
-    expect(isOutputEligibleContentType("application/json")).toBe(false);
-    expect(isOutputEligibleContentType("application/vnd.api+json")).toBe(false);
-    expect(isOutputEligibleContentType("text/html")).toBe(false);
-    expect(isOutputEligibleContentType("application/xml")).toBe(false);
-    expect(isOutputEligibleContentType("text/csv")).toBe(false);
-    expect(isOutputEligibleContentType("application/x-yaml")).toBe(false);
-    expect(isOutputEligibleContentType("application/octet-stream", "report.md")).toBe(false);
-    expect(isOutputEligibleContentType("application/octet-stream", "notes.txt")).toBe(false);
+  it("keeps business-readable documents eligible as task results", () => {
+    expect(isOutputEligibleContentType("text/markdown")).toBe(true);
+    expect(isOutputEligibleContentType("text/plain")).toBe(true);
+    expect(isOutputEligibleContentType("application/json")).toBe(true);
+    expect(isOutputEligibleContentType("application/vnd.api+json")).toBe(true);
+    expect(isOutputEligibleContentType("text/html")).toBe(true);
+    expect(isOutputEligibleContentType("application/xml")).toBe(true);
+    expect(isOutputEligibleContentType("text/csv")).toBe(true);
+    expect(isOutputEligibleContentType("application/x-yaml")).toBe(true);
+    expect(isOutputEligibleContentType("application/octet-stream", "report.md")).toBe(true);
+    expect(isOutputEligibleContentType("application/octet-stream", "notes.txt")).toBe(true);
   });
 });
 
@@ -162,15 +162,20 @@ describe("getIssueOutputs", () => {
     expect(result.rest).toEqual([]);
   });
 
-  it("ignores markdown and text artifact metadata instead of promoting them to outputs", () => {
+  it("promotes markdown, text and JSON artifacts to task results", () => {
     const result = getIssueOutputs([
       makeWorkProduct({ id: "markdown", metadata: artifactMetadata("text/markdown", "report.md") }),
       makeWorkProduct({ id: "text", metadata: artifactMetadata("text/plain", "notes.txt") }),
       makeWorkProduct({ id: "json", metadata: artifactMetadata("application/json", "summary.json") }),
       makeWorkProduct({ id: "generic-markdown", metadata: artifactMetadata("application/octet-stream", "legacy-report.md") }),
     ]);
-    expect(result.count).toBe(0);
-    expect(result.primary).toBeNull();
+    expect(result.items.map((item) => item.id)).toEqual([
+      "markdown",
+      "text",
+      "json",
+      "generic-markdown",
+    ]);
+    expect(result.primary?.id).toBe("markdown");
   });
 
   it("keeps video, image, pdf, zip, and binary artifact metadata as outputs", () => {
@@ -232,6 +237,6 @@ describe("getPromotedOutputAttachmentIds", () => {
       makeWorkProduct({ id: "broken", metadata: { attachmentId: "bad" } as Record<string, unknown> }),
     ]);
 
-    expect(Array.from(ids)).toEqual([videoAttachmentId]);
+    expect(Array.from(ids)).toEqual([videoAttachmentId, markdownAttachmentId]);
   });
 });
